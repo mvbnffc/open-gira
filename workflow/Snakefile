@@ -14,6 +14,7 @@ import math
 import os.path
 from glob import glob
 
+import numpy as np
 import requests
 
 from open_gira.assets import Assets
@@ -33,12 +34,6 @@ if any(["/" in h for h in config['infrastructure_datasets'].keys()]):
 if not isinstance(config['slice_count'], int) or \
         (math.sqrt(config['slice_count']) % 1 > 0 and config['slice_count'] != 1):
     raise ValueError("""Error in config: slice_count must be an integer, either a square number or 1""")
-
-n_proc = config["processes_per_parallel_job"]
-if not isinstance(n_proc, int) or (n_proc < 1):
-    raise ValueError(
-        f"config.processes_per_parallel_job has type: {type(n_proc)} and value: {n_proc}, but must be a positive integer"
-    )
 
 for network, file_path in config['network_filters'].items():
     if not os.path.exists(file_path):
@@ -66,6 +61,19 @@ else:
     # will raise ValueError in case of mismatch
     Assets.valid_selection(requested_asset_damage_types)
 
+# check tropical cyclone / grid workflow return period array is valid
+TC_RPs = np.array(config["return_period_years"])
+if not np.all(np.diff(TC_RPs) > 0):
+    raise ValueError("config.return_period_years should be monotonically increasing")
+if not np.all(TC_RPs > 0):
+    raise ValueError("config.return_period_years values must be strictly positive")
+
+# check transmission wind speed damage thresholds
+if not config["best_estimate_windspeed_failure_threshold"] in config["transmission_windspeed_failure"]:
+    raise ValueError(
+        "config.transmissions_windspeed_failure must contain config.best_estimate_windspeed_failure_threshold"
+    )
+
 # Constrain wildcards to NOT use _ or /
 wildcard_constraints:
     DATASET="[^_/]+",
@@ -77,70 +85,68 @@ wildcard_constraints:
     FILENAME="[^/]+",
     STORM_BASIN="EP|NA|NI|SI|SP|WP",
     STORM_RP="[0-9]+",
+    IRIS_SCENARIO="PRESENT|SSP1-2050|SSP2-2050|SSP5-2050",
     STORM_MODEL="constant|CMCC-CM2-VHR4|CNRM-CM6-1-HR|EC-Earth3P-HR|HadGEM3-GC31-HM",
     STORM_MODEL_FUTURE="CMCC-CM2-VHR4|CNRM-CM6-1-HR|EC-Earth3P-HR|HadGEM3-GC31-HM",
-    STORM_SET="(?:IBTrACS|STORM)[^\/]*",
+    STORM_SET="(?:IBTrACS|STORM|IRIS)[^\/]*",
     EVENTS_OR_FIXED="events|fixed",
+    COST_OR_FRACTION="cost|fraction",
     DIRECT_DAMAGE_TYPES="fraction_per_RP|cost_per_RP|EAD|EAD_and_cost_per_RP",
     SAMPLE="\d+",
     # may be upper or lower, one 'f' or two
     TIFF_FILE="[^\/\.\s]+\.[tT][iI][fF][fF]?",
 
-# generate values for global variables used across rules
-include: "rules/storm_workflow_global_variables.smk"
+# how many samples is each storm track dataset split into?
+SAMPLES_PER_TRACKSET = {
+    "IBTrACS": 1,
+    "STORM": 10,
+    "IRIS": 10,
+}
 
 ##### load rules #####
-include: "rules/download/coastlines.smk"
-include: "rules/download/natural-earth.smk"
-include: "rules/download/STORM.smk"
-include: "rules/download/IBTrACS.smk"
-include: "rules/download/gadm.smk"
-include: "rules/download/gridfinder.smk"
-include: "rules/download/worldpop-population.smk"
-include: "rules/download/ghsl-pop.smk"
-include: "rules/download/hazards.smk"
-include: "rules/download/dryad-gdp.smk"
-include: "rules/download/wri-powerplants.smk"
-include: "rules/download/osm.smk"
-include: "rules/download/land_cover.smk"
+include: "context/coastlines.smk"
+include: "context/gadm.smk"
+include: "context/natural-earth.smk"
 
-include: "rules/preprocess/gadm.smk"
-include: "rules/preprocess/filter_osm_data.smk"
-include: "rules/preprocess/trim_hazard_data.smk"
-include: "rules/preprocess/create_bbox_extracts.smk"
-include: "rules/preprocess/slice.smk"
-include: "rules/preprocess/join_network.smk"
-include: "rules/preprocess/targets.smk"
-include: "rules/preprocess/create_network.smk"
-include: "rules/preprocess/join_data.smk"
-include: "rules/preprocess/osm_to_geoparquet.smk"
-include: "rules/preprocess/create_overall_bbox.smk"
-include: "rules/preprocess/powerplants.smk"
-include: "rules/preprocess/IBTrACS.smk"
-include: "rules/preprocess/STORM.smk"
+include: "nature-ecosystems/land-cover.smk"
+include: "population-economy/dryad-gdp.smk"
+include: "population-economy/ghsl-pop.smk"
 
-include: "rules/exposure/join_data.smk"
-include: "rules/exposure/network_raster_intersection.smk"
-include: "rules/exposure/wind_fields.smk"
-include: "rules/exposure/flood_damages.smk"
-include: "rules/exposure/storm_damages.smk"
-include: "rules/exposure/aggregate_to_admin_area.smk"
+include: "power/gridfinder.smk"
+include: "power/wri-powerplants.smk"
+include: "power/gridfinder-targets.smk"
+include: "power/create_network.smk"
 
-include: "rules/analyse/network_components.smk"
-include: "rules/analyse/map/storm_tracks.smk"
-include: "rules/analyse/map/outages.smk"
-include: "rules/analyse/map/wind_fields.smk"
-include: "rules/analyse/plot/target_disruption.smk"
-include: "rules/analyse/plot/customers_affected_by_storm.smk"
+include: "transport/openstreetmap.smk"
+include: "transport/create_bbox_extracts.smk"
+include: "transport/slice.smk"
+include: "transport/join_network.smk"
+include: "transport/create_network.smk"
+include: "transport/osm_to_geoparquet.smk"
+include: "transport/create_overall_bbox.smk"
+include: "transport/join_data.smk"
 
-# Remove intermediate directories
-rule clean:
-    shell:
-        """
-        rm -rf {config[output_dir]}/json &&
-        rm -rf {config[output_dir]}/geoparquet &&
-        rm -rf {config[output_dir]}/slices &&
-        rm -rf {config[output_dir]}/splits &&
-        rm -rf {config[output_dir]}/direct_damages &&
-        rm -rf {config[output_dir]}/power/by_country
-        """
+include: "flood/aqueduct.smk"
+include: "flood/trim_hazard_data.smk"
+
+include: "tropical-cyclone/IBTrACS.smk"
+include: "tropical-cyclone/IRIS.smk"
+include: "tropical-cyclone/STORM.smk"
+include: "tropical-cyclone/join_tracks.smk"
+include: "tropical-cyclone/wind_fields/wind_fields.smk"
+
+include: "transport-flood/network_raster_intersection.smk"
+include: "transport-flood/flood_damages.smk"
+include: "transport-flood/aggregate_to_admin_area.smk"
+
+include: "power-tc/network_raster_intersection.smk"
+include: "power-tc/intersection.smk"
+include: "power-tc/exposure.smk"
+include: "power-tc/disruption.smk"
+include: "power-tc/network_components.smk"
+include: "power-tc/map/storm_tracks.smk"
+include: "power-tc/map/outages.smk"
+include: "power-tc/map/wind_fields.smk"
+include: "power-tc/map/target_disruption.smk"
+include: "power-tc/map/customers_affected_by_storm.smk"
+include: "power-tc/cyclone-grid.smk"
