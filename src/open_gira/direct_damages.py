@@ -75,6 +75,76 @@ class ReturnPeriodMap(ABC):
         return hash(self.name)
 
 
+class giriFlood(ReturnPeriodMap):
+    """
+    Class holding information about GIRI return period flood maps.
+
+    Each point in these raster flood maps is an inundation depth for a given
+    combination of e.g. scenario, return period
+    (probability).
+    """
+
+    # # there is only one subcategory of GIRI flood map
+    GLOBAL = "global"
+
+    # # coastal models may or may not include a subsidence component
+    # WITH_SUBSIDENCE = "wtsub"
+    # WITHOUT_SUBSIDENCE = "nosub"
+
+    def __init__(self, name: str):
+        """
+        Infer attributes from name.
+
+        Arguments:
+            name (str): Name string expected to be in the following formats:
+                global_pc_h5glob
+        """
+
+        if len(name.split(".")) > 1:
+            raise ValueError(f"{name=} contains dots; remove any file extension")
+
+        # store the original string for later use
+        self.name = name
+
+        map_type, *split_name = name.split("_")
+
+        scenario, return_period_years = split_name
+
+        if scenario == "pc":
+            self.scenario = 'historical'
+            self.year = 2015
+        else:
+            self.scenario = scenario
+            self.year = 2075
+
+        self.return_period_years = float(return_period_years.replace("h", "").replace('glob',''))
+        self.model = 'GIRI'
+
+        return
+
+    @property
+    def without_model(self) -> str:
+        """
+        A name identifying the attributes of the hazard, without any model
+        information (climate model / subsidence). Don't need this for GIRI maps
+        """
+        split_name = self.name.split("_")
+        return "_".join(split_name)
+
+    @property
+    def without_RP(self) -> str:
+        """
+        A name identifying the attributes of the hazard, without any return
+        period.
+
+        N.B. For collapsing return periods into expected annual damages (EAD)
+        it is useful to generate a name without return period information.
+        """
+
+        split_name = self.name.split("_")
+        split_name.pop(2)  # index of return period element for river and coastal map names
+        return "_".join(split_name)
+
 class AqueductFlood(ReturnPeriodMap):
     """
     Class holding information about aqueduct return period flood maps.
@@ -213,6 +283,7 @@ def get_rp_map(name: str) -> ReturnPeriodMap:
     prefix_class_map: dict[str, type[ReturnPeriodMap]] = {
         AqueductFlood.RIVERINE: AqueductFlood,
         AqueductFlood.COASTAL: AqueductFlood,
+        giriFlood.GLOBAL: giriFlood
     }
 
     # choose constructor on name prefix

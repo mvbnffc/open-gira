@@ -15,10 +15,13 @@ hazard_datasets:
   aqueduct-river: 'config/hazard_resource_locations/aqueduct-river.txt'
   aqueduct-river-historical: 'config/hazard_resource_locations/aqueduct-river-historical.txt'
   jba-event: 'config/hazard_resource_locations/jba-events.txt'
+  giri-river: 'config/hazard_resource_locations/giri-river.txt'
 
 hazard_types:
   aqueduct-coast: 'flood'
   aqueduct-river: 'flood'
+  aqueduct-river-historical: 'flood'
+  giri-river: 'flood'
   jba-event: 'flood'
 
 # OSM datasets in PBF format, principally from: https://download.geofabrik.de/ #
