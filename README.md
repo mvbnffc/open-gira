@@ -11,6 +11,7 @@ workflow can be used to analyse environmental risks to infrastructure
 networks using global open data. It is a work in progress.
 
 Goals:
+
 - Automated pipeline for reproducible analysis anywhere in the world
 - Maps per-country and of larger areas
 - Charts/stats of exposure per admin region, per hazard type, scenario, epoch
@@ -20,6 +21,7 @@ Goals:
 - Estimate indirect effects of disruption - people affected, economic activity disrupted
 
 Non-goals:
+
 - Using closed data, which may be appropriate for other projects or use-cases
 - Detailed operational/engineering level simulation
 - Long-term planning
@@ -27,6 +29,7 @@ Non-goals:
 ## Installation
 
 Install `open-gira` by cloning the repository:
+
 ```bash
 git clone https://github.com/nismod/open-gira.git
 ```
@@ -39,14 +42,38 @@ manage these `conda` packages.
 
 Having installed one of the suggested package managers, to create the
 `open-gira` conda environment:
+
 ```bash
 micromamba create -f environment.yml -y
 ```
 
 And to activate the environment:
+
 ```bash
 micromamba activate open-gira
 ```
+
+### Utilities
+
+Some rules use the `wget` utility to download files.
+
+On Linux or MacOS, you may already have the `wget` utility available. If not,
+it should be possible to install with your usual package manager (e.g. apt,
+MacPorts, brew), or else using micromamba:
+
+```bash
+micromamba install wget
+```
+
+On Windows, you may have it already if you have a MinGW or Cygwin installation.
+If not, you can access binaries at [eternallybored.org](https://eternallybored.org/misc/wget/).
+Download the standalone exe and place it for example in `C:\Users\username\bin`
+or somewhere on your PATH.
+
+`exactextract` is used for zonal statistics in the tropical cyclones /
+electricity grid analysis. It is not available via the `conda` package
+management ecosystem and so must be installed separately. Please see
+installation instructions [here](https://github.com/isciences/exactextract).
 
 You are now ready to request result files, triggering analysis jobs in the
 process.
@@ -54,16 +81,12 @@ process.
 Note that all subsequent commands given in the documentation assume that the
 `open-gira` environment is already activated.
 
-`exactextract` is used for zonal statistics in the tropical cyclones /
-electricity grid analysis. It is not available via the `conda` package
-management ecosystem and so must be installed separately. Please see
-installation instructions [here](https://github.com/isciences/exactextract).
-
 ## Tests
 
 Workflow steps are tested using small sample datasets.
 
 To run the tests:
+
 ```bash
 python -m pytest tests
 ```
@@ -79,18 +102,20 @@ users have, if any) by applying general rules with pattern matching on file and
 folder names.
 
 A example invocation looks like:
+
 ```bash
-snakemake --cores 2 -- results/wales-latest_filter-road/edges.geoparquet
+snakemake --cores 2 -- results/wales-latest_filter-road-primary/edges.gpq
 ```
 
 Here, we ask `snakemake` to use up to 2 CPUs to produce a target file, in this
 case, the edges of the Welsh road network. `snakemake` pattern matches
-`wales-latest` as the OSM dataset name and `filter-road` as the network type we
-want to filter for.
+`wales-latest` as the OSM dataset name and `road-primary` as the network
+type we want to filter for, picking up the [filter expressions](https://docs.osmcode.org/osmium/latest/osmium-tags-filter.html#filter-expressions) as defined in `config/osm_filters/road-primary.txt`.
 
 To check what work we're going to request before commencing, use the `-n` flag:
+
 ```bash
-snakemake -n --cores 2 -- results/wales-latest_filter-road/edges.geoparquet
+snakemake -n --cores 2 -- results/wales-latest_filter-road-primary/edges.gpq
 ```
 
 This will explain which rules will be required to run to produce the target
@@ -144,3 +169,7 @@ network cleaning and assembly.
 This research received funding from the FCDO Climate Compatible Growth
 Programme. The views expressed here do not necessarily reflect the UK
 government's official policies.
+
+This research has also been supported by funding from the World Bank
+Group, and the UK Natural Environment Research Council (NERC) through
+the UK Centre for Greening Finance and Investment (CGFI).

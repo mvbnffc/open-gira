@@ -60,47 +60,14 @@ def cast(x: Any, *, casting_function: Callable, nullable: bool) -> Any:
             raise ValueError("Couldn't recast to non-nullable value") from casting_error
 
 
-def get_administrative_data(file_path: str, to_epsg: int = None) -> gpd.GeoDataFrame:
-    """
-    Read administrative data (country ISO, country geometry) from disk
-
-    Arguments:
-        file_path (str): Location of file with country data:
-            containing an ISO three letter code as 'GID_0' and a geometry as
-            'geometry'
-        to_epsg (int): EPSG code to project data to
-
-    Returns:
-        gpd.GeoDataFrame: Table of country and geometry data with:
-            'iso_a3' and 'geometry' columns
-    """
-
-    # read file
-    gdf = gpd.read_file(file_path)
-
-    # check schema is as expected
-    expected_columns = {"GID_0", "geometry"}
-    assert expected_columns.issubset(set(gdf.columns.values))
-
-    # reproject if desired
-    if to_epsg is not None:
-        gdf = gdf.to_crs(epsg=to_epsg)
-
-    # rename these columns first so we don't have to do this twice (to nodes and edges) later
-    gdf.rename(columns={"GID_0": "iso_a3"}, inplace=True)
-
-    # subset, sort by iso_a3 and return
-    return gdf[["iso_a3", "geometry"]].sort_values(by=["iso_a3"], ascending=True)
-
-
 def annotate_country(network: snkit.network.Network, countries: gpd.GeoDataFrame) -> snkit.network.Network:
     """
     Label network edges and nodes with their country ISO code
 
     Arguments:
         network (snkit.network.Network): Network to label with geographic information
-            network.edges must have 'from_node_id', 'to_node_id'
-            network.nodes must have 'node_id', 'geometry'
+            network.edges must have 'from_id', 'to_id'
+            network.nodes must have 'id', 'geometry'
         countries (gpd.GeoDataFrame): Table required to contain the following columns:
             'iso_a3', 'geometry'
 
@@ -113,8 +80,8 @@ def annotate_country(network: snkit.network.Network, countries: gpd.GeoDataFrame
     nodes = network.nodes
 
     # check we have required inputs
-    assert set(edges.columns.values).issuperset({"from_node_id", "to_node_id"})
-    assert set(nodes.columns.values).issuperset({"node_id", "geometry"})
+    assert set(edges.columns.values).issuperset({"from_id", "to_id"})
+    assert set(nodes.columns.values).issuperset({"id", "geometry"})
     assert set(countries.columns.values).issuperset({"iso_a3", "geometry"})
 
     # check our inputs have a registered CRS
@@ -155,27 +122,27 @@ def annotate_country(network: snkit.network.Network, countries: gpd.GeoDataFrame
         crs=input_node_crs
     )
 
-    # set edge.from_node_id from node.node_id and use iso_a3 of from node as edge start
+    # set edge.from_iso_a3 from node.iso_a3 of edge.from_id
     edges = pd.merge(
         edges,
-        nodes[["node_id", "iso_a3"]],
+        nodes[["id", "iso_a3"]],
         how="left",
-        left_on=["from_node_id"],
-        right_on=["node_id"],
+        left_on=["from_id"],
+        right_on=["id"],
     )
-    edges.rename(columns={"iso_a3": "from_iso_a3"}, inplace=True)
-    edges.drop("node_id", axis=1, inplace=True)
+    edges = edges.drop("id_y", axis=1)
+    edges = edges.rename(columns={"iso_a3": "from_iso_a3", "id_x": "id"})
 
-    # set edge.to_node_id from node.node_id and use iso_a3 of from node as edge end
+    # set edge.to_iso_a3 from node.iso_a3 of edge.to_id
     edges = pd.merge(
         edges,
-        nodes[["node_id", "iso_a3"]],
+        nodes[["id", "iso_a3"]],
         how="left",
-        left_on=["to_node_id"],
-        right_on=["node_id"],
+        left_on=["to_id"],
+        right_on=["id"],
     )
-    edges.rename(columns={"iso_a3": "to_iso_a3"}, inplace=True)
-    edges.drop("node_id", axis=1, inplace=True)
+    edges = edges.drop("id_y", axis=1)
+    edges = edges.rename(columns={"iso_a3": "to_iso_a3", "id_x": "id"})
 
     network.nodes = nodes
     network.edges = edges

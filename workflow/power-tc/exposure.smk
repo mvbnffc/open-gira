@@ -234,3 +234,8 @@ rule merge_exposure_admin_levels:
 
             merged.reset_index(drop=True).sort_index(axis=1).to_parquet(output.merged_admin_levels)
             logging.info("Done")
+
+"""
+Test with:
+snakemake -c1 -- results/power/by_storm_set/IBTrACS/exposure/EAE_admin-level-2-0.gpq
+"""
