@@ -3,6 +3,7 @@
 # `water bodes` surface roughness changed from 0 to a value used in WRF
 # `wetlands` surface roughness changed from 11 to 1.1 (presumed error)
 # `no data` added with same roughness as `permanent snow and ice`
+#  added a new value of 250 for 'mangroves'
 "category_name","glob_cover_2009_id","roughness_length_m"
 "water bodies",210,0.0003
 "no data",230,0.004
@@ -27,3 +28,4 @@
 "forest",90,1.5
 "forest",100,1.5
 "forest",110,1.5
+"mangroves",250,1.5

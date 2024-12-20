@@ -391,6 +391,13 @@ def direct_damage(
     # DAMAGE FRACTIONS (per split geometry, for all rasters) #
     ##########################################################
 
+    # # Debug (there is no edge_id column so we will add it)
+    # if "edge_id" not in exposure.columns:
+    #     print('Edge_ID not in exposure columns')
+    #     exposure["edge_id"] = range(len(exposure))
+
+    # print("Debug! exposure columns:", exposure.columns)
+
     # calculate damages for assets we have damage curves for
     damage_fraction_by_asset_type = []
     logging.info(f"Exposed assets {natural_sort(set(exposure.asset_type))}")
@@ -454,6 +461,8 @@ def direct_damage(
     logging.info("Unifying rasterised segments and summing damage costs")
 
     # grouping on edge_id, sum all direct damage estimates to give a total dollar cost per edge
+    # Debug
+    print('Debug: Columns in damage_fraction:', damage_fraction.columns)
     direct_damages = pd.concat(
         [direct_damages_only, damage_fraction["edge_id"]],
         axis="columns"
