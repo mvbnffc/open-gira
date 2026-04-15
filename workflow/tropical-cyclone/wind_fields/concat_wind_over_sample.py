@@ -1,11 +1,72 @@
 import logging
+import os
+import shutil
 import sys
+import tempfile
+import time
 
 from dask.delayed import Delayed
 import xarray as xr
 
 from open_gira.io import netcdf_packing_parameters
 from open_gira.wind import empty_wind_da
+
+
+def write_netcdf_via_local_scratch(dataset: xr.Dataset, output_path: str, encoding: dict) -> None:
+    """
+    Temporary workaround for slow direct netCDF writes on shared cluster storage.
+
+    Write netCDF to node-local scratch first, then copy into final location.
+    Revisit this once direct writes are no longer a bottleneck.
+    """
+    scratch_parent = (
+        os.environ.get("TMPDIR")
+        or os.environ.get("TMP")
+        or os.environ.get("TEMP")
+        or tempfile.gettempdir()
+    )
+    os.makedirs(scratch_parent, exist_ok=True)
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    with tempfile.NamedTemporaryFile(
+        suffix=".nc",
+        prefix="open_gira_concat_",
+        dir=scratch_parent,
+        delete=False,
+    ) as handle:
+        scratch_path = handle.name
+
+    try:
+        scratch_write_start = time.perf_counter()
+        serialisation_task: Delayed = dataset.to_netcdf(
+            scratch_path,
+            encoding=encoding,
+            compute=False,
+        )
+        serialisation_task.compute(scheduler="synchronous")
+        scratch_write_elapsed = time.perf_counter() - scratch_write_start
+
+        final_copy_start = time.perf_counter()
+        shutil.copy2(scratch_path, output_path)
+        final_copy_elapsed = time.perf_counter() - final_copy_start
+
+        output_size_mib = os.path.getsize(output_path) / 1024**2
+        logging.info(
+            "Wrote scratch netCDF to %s in %.2fs",
+            scratch_path,
+            scratch_write_elapsed,
+        )
+        logging.info(
+            "Copied netCDF to %s in %.2fs (%.2f MiB on disk)",
+            output_path,
+            final_copy_elapsed,
+            output_size_mib,
+        )
+    finally:
+        try:
+            os.remove(scratch_path)
+        except OSError:
+            pass
 
 
 if __name__ == "__main__":
@@ -46,9 +107,16 @@ if __name__ == "__main__":
     )
 
     logging.info("Writing pooled wind fields to disk")
-    serialisation_task: Delayed = all_samples.to_netcdf(
+    logging.info(
+        "Preparing pooled netCDF for %s events",
+        all_samples.event_id.size,
+    )
+    # Temporary fix for cluster I/O bottlenecks: write locally first so this
+    # can be reverted back to a direct `to_netcdf(output_path, ...)` later.
+    write_netcdf_via_local_scratch(
+        all_samples,
         snakemake.output.concat,  # noqa: F821
-        encoding={
+        {
             "max_wind_speed": {
                 "dtype": "int16",
                 "scale_factor": scale_factor,
@@ -56,6 +124,4 @@ if __name__ == "__main__":
                 "_FillValue": fill_value,
             }
         },
-        compute=False,
     )
-    serialisation_task.compute(scheduler=scheduler)

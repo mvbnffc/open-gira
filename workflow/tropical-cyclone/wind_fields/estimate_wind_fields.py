@@ -48,7 +48,12 @@ def write_netcdf_via_local_scratch(
     da: xr.DataArray, output_path: str, encoding: dict
 ) -> tuple[float, float, str]:
     """
+    Temporary workaround for slow direct netCDF writes on shared cluster storage.
+
     Write netCDF to node-local scratch first, then copy into final location.
+
+    Revisit and simplify this once direct `to_netcdf(output_path, ...)` writes
+    are no longer a performance bottleneck on the target environment.
 
     Returns:
         scratch_write_elapsed: Seconds to serialise netCDF to local scratch
@@ -339,6 +344,8 @@ if __name__ == "__main__":
         encoding,
     )
 
+    # Temporary fix for cluster I/O bottlenecks: write locally first so this
+    # can be reverted back to a direct `to_netcdf(output_path, ...)` later.
     logging.info("Writing netCDF via local scratch")
     scratch_write_elapsed, final_copy_elapsed, scratch_path = write_netcdf_via_local_scratch(
         da, output_path, encoding
