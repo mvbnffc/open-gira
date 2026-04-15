@@ -48,7 +48,7 @@ snakemake -c1 results/storm_tracks/IRIS_SSP1-2050/0/tracks.geoparquet
 rule slice_IRIS:
     input:
         global_tracks=rules.parse_IRIS.output.parquet,
-        grid_hull="{OUTPUT_DIR}/power/by_country/{COUNTRY_ISO_A3}/network/convex_hull.json"
+        country_aoi="{OUTPUT_DIR}/power/by_country/{COUNTRY_ISO_A3}/storms/country_aoi.json"
     output:
         sliced_tracks="{OUTPUT_DIR}/power/by_country/{COUNTRY_ISO_A3}/storms/IRIS-{IRIS_SCENARIO}/{SAMPLE}/tracks.geoparquet",
     resources:

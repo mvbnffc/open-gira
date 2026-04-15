@@ -22,31 +22,29 @@ logging.basicConfig(
 
 if __name__ == "__main__":
     global_tracks_path: str = snakemake.input.global_tracks  # noqa: F821
-    grid_hull_path: str = snakemake.input.grid_hull  # noqa: F821
+    country_aoi_path: str = snakemake.input.country_aoi  # noqa: F821
     track_slicing_buffer_deg: float = snakemake.config[  # noqa: F821
         "max_track_search_radius_deg"
     ]
     sliced_tracks_path: str = snakemake.output.sliced_tracks  # noqa: F821
 
-    # use a hull to reject tracks which would intersect a bounding box
-    # but not impact the grid
-    with open(grid_hull_path, "r") as fp:
+    with open(country_aoi_path, "r") as fp:
         data = json.load(fp)
 
     try:
         (shape_dict,) = data["features"]
     except ValueError:
-        logging.info("No network, therefore no intersecting storm tracks")
+        logging.info("No country AOI found, therefore no intersecting storm tracks")
         os.makedirs(os.path.dirname(sliced_tracks_path), exist_ok=True)
         gpd.GeoDataFrame({"geometry": []}, crs=4326).to_parquet(sliced_tracks_path)
         sys.exit(0)
 
-    hull = shapely.geometry.shape(shape_dict["geometry"])
+    country_aoi = shapely.geometry.shape(shape_dict["geometry"])
 
     tracks = gpd.read_parquet(global_tracks_path)
 
-    logging.info("Subsetting tracks to those which intersect with grid (+ buffer)")
-    aoi_points = tracks[tracks.intersects(hull.buffer(track_slicing_buffer_deg))]
+    logging.info("Subsetting tracks to those which intersect with country AOI (+ buffer)")
+    aoi_points = tracks[tracks.intersects(country_aoi.buffer(track_slicing_buffer_deg))]
 
     logging.info("Slicing tracks' first arrival to last departure")
     if not aoi_points.index.name:

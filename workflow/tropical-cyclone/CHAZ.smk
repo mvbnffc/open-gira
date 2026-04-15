@@ -44,7 +44,7 @@ rule slice_CHAZ:
     """
     input:
         global_tracks="{OUTPUT_DIR}/storm_tracks/{CHAZ_SCENARIO}/{SAMPLE}/tracks.geoparquet",
-        grid_hull="{OUTPUT_DIR}/power/by_country/{COUNTRY_ISO_A3}/network/convex_hull.json"
+        country_aoi="{OUTPUT_DIR}/power/by_country/{COUNTRY_ISO_A3}/storms/country_aoi.json"
     output:
         sliced_tracks="{OUTPUT_DIR}/power/by_country/{COUNTRY_ISO_A3}/storms/{CHAZ_SCENARIO}/{SAMPLE}/tracks.geoparquet",
     resources:

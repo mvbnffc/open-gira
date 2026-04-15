@@ -6,13 +6,39 @@ import json
 from open_gira.io import cached_json_file_read
 
 
+rule create_country_tc_aoi:
+    """
+    Create a tropical-cyclone area of interest from the full country boundary.
+    """
+    input:
+        admin_bounds="{OUTPUT_DIR}/input/admin-boundaries/admin-level-0.geoparquet",
+    output:
+        country_aoi="{OUTPUT_DIR}/power/by_country/{COUNTRY_ISO_A3}/storms/country_aoi.json",
+    run:
+        import os
+
+        import geopandas as gpd
+
+        countries = gpd.read_parquet(input.admin_bounds)
+        country = countries[countries.GID_0 == wildcards.COUNTRY_ISO_A3]
+
+        if country.empty:
+            raise ValueError(f"Could not find admin boundary for {wildcards.COUNTRY_ISO_A3}")
+
+        os.makedirs(os.path.dirname(output.country_aoi), exist_ok=True)
+        gpd.GeoDataFrame(
+            {"geometry": [country.geometry.unary_union]},
+            crs=country.crs,
+        ).to_file(output.country_aoi)
+
+
 rule create_wind_grid:
     """
     Create an empty TIFF file for a given box specifying the spatial grid to
     evaluate wind speed on
     """
     input:
-        network_hull="{OUTPUT_DIR}/power/by_country/{COUNTRY_ISO_A3}/network/convex_hull.json",
+        country_aoi=rules.create_country_tc_aoi.output.country_aoi,
     params:
         # include wind_grid_resolution_deg as a param to trigger re-runs on change
         grid_resolution=config["wind_grid_resolution_deg"]
@@ -51,7 +77,7 @@ rule create_wind_grid:
             return n_cells, minimum - buffer, maximum + buffer
 
         # read hull shape from disk
-        with open(input.network_hull, "r") as fp:
+        with open(input.country_aoi, "r") as fp:
             data = json.load(fp)
 
         try:

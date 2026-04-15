@@ -74,7 +74,7 @@ rule slice_storm:
     """
     input:
         global_tracks="{OUTPUT_DIR}/storm_tracks/STORM-{STORM_MODEL}/{SAMPLE}/tracks.geoparquet",
-        grid_hull="{OUTPUT_DIR}/power/by_country/{COUNTRY_ISO_A3}/network/convex_hull.json"
+        country_aoi="{OUTPUT_DIR}/power/by_country/{COUNTRY_ISO_A3}/storms/country_aoi.json"
     output:
         sliced_tracks="{OUTPUT_DIR}/power/by_country/{COUNTRY_ISO_A3}/storms/STORM-{STORM_MODEL}/{SAMPLE}/tracks.geoparquet",
     resources:
