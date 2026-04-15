@@ -18,9 +18,14 @@ rule download_GDP:
         """
         mkdir -p {wildcards.OUTPUT_DIR}/input/GDP
         cd {wildcards.OUTPUT_DIR}/input/GDP
-        wget https://datadryad.org/api/v2/datasets/doi%3A10.5061%2Fdryad.dk1j0/download \
-            --content-disposition
-        unzip -o doi_10.5061_dryad.dk1j0__v2.zip
+
+        wget https://zenodo.org/record/4972425/files/admin_areas_GDP_HDI.nc
+        wget https://zenodo.org/record/4972425/files/GDP_per_capita_PPP_1990_2015_v2.nc
+        wget https://zenodo.org/record/4972425/files/GDP_PPP_30arcsec_v3.nc
+        wget https://zenodo.org/record/4972425/files/GDP_PPP_1990_2015_5arcmin_v2.nc
+        wget https://zenodo.org/record/4972425/files/pedigree_GDP_per_capita_PPP_1990_2015_v2.nc
+        wget https://zenodo.org/record/4972425/files/HDI_1990_2015_v2.nc
+        wget https://zenodo.org/record/4972425/files/pedigree_HDI_1990_2015_v2.nc
         """
 
 """
