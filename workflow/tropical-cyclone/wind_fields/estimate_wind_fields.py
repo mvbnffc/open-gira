@@ -8,6 +8,7 @@ import multiprocessing
 import logging
 from typing import Optional
 import sys
+import time
 
 import geopandas as gpd
 import numpy as np
@@ -233,10 +234,28 @@ if __name__ == "__main__":
 
     logging.info("Saving maximum wind speeds to disk")
     track_ids, fields = zip(*max_wind_speeds)
+    logging.info(
+        "Preparing netCDF payload for %s events on a %s x %s grid",
+        len(track_ids),
+        len(grid.y.values),
+        len(grid.x.values),
+    )
 
+    stack_start = time.perf_counter()
+    stacked_fields = np.stack(fields)
+    stack_elapsed = time.perf_counter() - stack_start
+    logging.info(
+        "Stacked wind fields in %.2fs to shape %s (dtype=%s, %.2f MiB in memory)",
+        stack_elapsed,
+        stacked_fields.shape,
+        stacked_fields.dtype,
+        stacked_fields.nbytes / 1024**2,
+    )
+
+    da_start = time.perf_counter()
     # write to disk as netCDF with CRS
     da = xr.DataArray(
-        data=np.stack(fields),
+        data=stacked_fields,
         dims=WIND_COORDS.keys(),
         coords=(
             ("event_id", list(track_ids)),
@@ -256,8 +275,35 @@ if __name__ == "__main__":
     # spatial_ref_attrs = pyproj.CRS.from_user_input(4326).to_cf()
     # da["spatial_ref"] = ((), 0, spatial_ref_attrs)
     da = da.rio.write_crs("EPSG:4326")
+    da_elapsed = time.perf_counter() - da_start
+    logging.info(
+        "Constructed DataArray in %.2fs with dims %s",
+        da_elapsed,
+        dict(da.sizes),
+    )
 
     # pack floating point data as integers on disk
-    da.to_netcdf(output_path, encoding=bit_pack_dataarray_encoding(da))
+    encoding_start = time.perf_counter()
+    encoding = bit_pack_dataarray_encoding(da)
+    encoding_elapsed = time.perf_counter() - encoding_start
+    logging.info(
+        "Calculated netCDF encoding in %.2fs: %s",
+        encoding_elapsed,
+        encoding,
+    )
+
+    write_start = time.perf_counter()
+    da.to_netcdf(output_path, encoding=encoding)
+    write_elapsed = time.perf_counter() - write_start
+    try:
+        output_size_mib = os.path.getsize(output_path) / 1024**2
+    except OSError:
+        output_size_mib = float("nan")
+    logging.info(
+        "Wrote netCDF to %s in %.2fs (%.2f MiB on disk)",
+        output_path,
+        write_elapsed,
+        output_size_mib,
+    )
 
     logging.info("Done estimating wind fields")
