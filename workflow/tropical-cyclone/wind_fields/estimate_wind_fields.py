@@ -6,6 +6,8 @@ each storm.
 import os
 import multiprocessing
 import logging
+import shutil
+import tempfile
 from typing import Optional
 import sys
 import time
@@ -40,6 +42,51 @@ def cleanup(output_path: str):
     """
     empty_wind_da().to_netcdf(output_path)
     sys.exit(0)
+
+
+def write_netcdf_via_local_scratch(
+    da: xr.DataArray, output_path: str, encoding: dict
+) -> tuple[float, float, str]:
+    """
+    Write netCDF to node-local scratch first, then copy into final location.
+
+    Returns:
+        scratch_write_elapsed: Seconds to serialise netCDF to local scratch
+        final_copy_elapsed: Seconds to copy or move result to final output path
+        scratch_path: Scratch file path used for the intermediate netCDF
+    """
+    scratch_parent = (
+        os.environ.get("TMPDIR")
+        or os.environ.get("TMP")
+        or os.environ.get("TEMP")
+        or tempfile.gettempdir()
+    )
+    os.makedirs(scratch_parent, exist_ok=True)
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    with tempfile.NamedTemporaryFile(
+        suffix=".nc",
+        prefix="open_gira_wind_",
+        dir=scratch_parent,
+        delete=False,
+    ) as handle:
+        scratch_path = handle.name
+
+    try:
+        scratch_write_start = time.perf_counter()
+        da.to_netcdf(scratch_path, encoding=encoding)
+        scratch_write_elapsed = time.perf_counter() - scratch_write_start
+
+        final_copy_start = time.perf_counter()
+        shutil.copy2(scratch_path, output_path)
+        final_copy_elapsed = time.perf_counter() - final_copy_start
+    finally:
+        try:
+            os.remove(scratch_path)
+        except OSError:
+            pass
+
+    return scratch_write_elapsed, final_copy_elapsed, scratch_path
 
 
 def process_track(
@@ -292,17 +339,23 @@ if __name__ == "__main__":
         encoding,
     )
 
-    write_start = time.perf_counter()
-    da.to_netcdf(output_path, encoding=encoding)
-    write_elapsed = time.perf_counter() - write_start
+    logging.info("Writing netCDF via local scratch")
+    scratch_write_elapsed, final_copy_elapsed, scratch_path = write_netcdf_via_local_scratch(
+        da, output_path, encoding
+    )
     try:
         output_size_mib = os.path.getsize(output_path) / 1024**2
     except OSError:
         output_size_mib = float("nan")
     logging.info(
-        "Wrote netCDF to %s in %.2fs (%.2f MiB on disk)",
+        "Wrote scratch netCDF to %s in %.2fs",
+        scratch_path,
+        scratch_write_elapsed,
+    )
+    logging.info(
+        "Copied netCDF to %s in %.2fs (%.2f MiB on disk)",
         output_path,
-        write_elapsed,
+        final_copy_elapsed,
         output_size_mib,
     )
 
