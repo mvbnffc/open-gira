@@ -139,36 +139,63 @@ def process_track(
     # basin of first record for storm track (storm genesis for synthetic tracks)
     basin: str = track.iloc[0, track.columns.get_loc("basin_id")]
 
-    # interpolate track (avoid 'doughnut effect' of wind field from infrequent eye observations)
+    # Interpolate the track to avoid the "doughnut effect" that can arise from
+    # sparse eye observations. If interpolation fails, fall back to the
+    # observed points rather than silently turning the event into a null field.
+    used_interpolation = False
+    track_to_use = track
     try:
-        track: gpd.GeoDataFrame = interpolate_track(track)
+        track_to_use = interpolate_track(track)
+        used_interpolation = True
     except (AssertionError, ValueError):
-        logging.warning(f"Could not successfully interpolate {track_id}")
-        return track_id, np.zeros_like(downscaling_factors)
+        logging.warning(
+            "Could not successfully interpolate %s; falling back to the "
+            "original track with %s observed points",
+            track_id,
+            len(track),
+        )
+
+    if len(track_to_use) == 1:
+        logging.warning(
+            "Track %s has only one usable point after preprocessing; "
+            "returning a null wind field",
+            track_id,
+        )
+        return track_id, np.zeros(grid_shape)
 
     # forward azimuth angle and distances from track eye to next track eye
     geod_wgs84: pyproj.Geod = pyproj.CRS("epsg:4326").get_geod()
     advection_azimuth_deg, _, eye_step_distance_m = geod_wgs84.inv(
-        track.geometry.x.iloc[:-1],
-        track.geometry.y.iloc[:-1],
-        track.geometry.x.iloc[1:],
-        track.geometry.y.iloc[1:],
+        track_to_use.geometry.x.iloc[:-1],
+        track_to_use.geometry.y.iloc[:-1],
+        track_to_use.geometry.x.iloc[1:],
+        track_to_use.geometry.y.iloc[1:],
     )
 
     # gapfill last period/distance values with penultimate value
-    period = track.index[1:] - track.index[:-1]
+    period = track_to_use.index[1:] - track_to_use.index[:-1]
     period = period.append(period[-1:])
     eye_step_distance_m = [*eye_step_distance_m, eye_step_distance_m[-1]]
-    track["advection_azimuth_deg"] = [*advection_azimuth_deg, advection_azimuth_deg[-1]]
+    track_to_use["advection_azimuth_deg"] = [
+        *advection_azimuth_deg,
+        advection_azimuth_deg[-1],
+    ]
 
     # calculate eye speed
-    track["eye_speed_ms"] = eye_step_distance_m / period.seconds.values
+    track_to_use["eye_speed_ms"] = eye_step_distance_m / period.total_seconds().values
+
+    if not used_interpolation and (period.total_seconds() > 6 * 60 * 60).any():
+        logging.warning(
+            "Track %s contains gap(s) greater than 6h; coarse-track fallback "
+            "may underestimate peak winds",
+            track_id,
+        )
 
     # result array
-    wind_field: np.ndarray = np.zeros((len(track), *grid_shape), dtype=complex)
+    wind_field: np.ndarray = np.zeros((len(track_to_use), *grid_shape), dtype=complex)
 
     failed_qa = False
-    for track_i, track_point in enumerate(track.itertuples()):
+    for track_i, track_point in enumerate(track_to_use.itertuples()):
         try:
             wind_field[track_i, :] = estimate_wind_field(
                 longitude,  # degrees
@@ -210,7 +237,9 @@ def process_track(
 
         if plot_animation:
             animate_track(
-                downscaled_wind_field, track, os.path.join(plot_dir, f"{track_id}.gif")
+                downscaled_wind_field,
+                track_to_use,
+                os.path.join(plot_dir, f"{track_id}.gif"),
             )
 
     return track_id, max_wind_speeds
